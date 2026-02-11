@@ -51,7 +51,6 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=semver,pattern={{version}}
-            type=ref,event=tag
             type=sha,prefix=
 
       - name: 🚀 Build and push (Multi-Arch)
