@@ -1,0 +1,65 @@
+name: 🐳 Docker
+
+on:
+  push:
+    branches: [master]
+    tags: ['*']
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: 🦀 Build binaries
+        run: |
+          cargo install cross --locked
+          export CFG_COMMIT_HASH=$(git log --pretty=format:'%h' -n 1)
+          export CFG_COMMIT_DATE=$(git log --format="%ci" -n 1)
+          cross build --release --target x86_64-unknown-linux-musl -p leaf-cli
+          cross build --release --target aarch64-unknown-linux-musl -p leaf-cli
+          cp target/x86_64-unknown-linux-musl/release/leaf leaf_amd64
+          cp target/aarch64-unknown-linux-musl/release/leaf leaf_arm64
+
+      - name: 🛠️ Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Log into registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏷️ Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=ref,event=tag
+            type=sha,prefix=
+
+      - name: 🚀 Build and push (Multi-Arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          provenance: false
